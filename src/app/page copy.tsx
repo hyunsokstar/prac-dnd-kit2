@@ -51,7 +51,7 @@ const DraggableBox = ({
       style={style}
       {...listeners}
       {...attributes}
-      className={`w-24 h-24 text-white flex items-center justify-center cursor-grab rounded-lg shadow-md
+      className={`w-32 h-32 text-white flex items-center justify-center cursor-grab rounded-lg shadow-md
         ${item.color} ${isDragging ? "ring-2 ring-white ring-opacity-60 opacity-90" : ""}`}
     >
       <div className="text-center">
@@ -87,7 +87,7 @@ const DropZone = ({
         stiffness: 300,
         damping: 30
       }}
-      className={`w-28 h-28 flex items-center justify-center transition-all duration-200 
+      className={`w-36 h-36 flex items-center justify-center transition-all duration-200 
         ${isActive ? "bg-gray-100 rounded-lg" : ""}
         ${isOver || dropIsOver ? "bg-gray-200 rounded-lg" : ""}`}
     >
@@ -111,32 +111,23 @@ export default function Page() {
     "box-1": { id: "box-1", color: "bg-blue-500", content: "Box 1", order: 0 },
     "box-2": { id: "box-2", color: "bg-green-500", content: "Box 2", order: 1 },
     "box-3": { id: "box-3", color: "bg-purple-500", content: "Box 3", order: 2 },
-    "box-4": { id: "box-4", color: "bg-red-500", content: "Box 4", order: 3 },
-    "box-5": { id: "box-5", color: "bg-yellow-500", content: "Box 5", order: 4 },
-    "box-6": { id: "box-6", color: "bg-pink-500", content: "Box 6", order: 5 },
-    "box-7": { id: "box-7", color: "bg-indigo-500", content: "Box 7", order: 6 },
-    "box-8": { id: "box-8", color: "bg-teal-500", content: "Box 8", order: 7 },
-    "box-9": { id: "box-9", color: "bg-orange-500", content: "Box 9", order: 8 },
   });
   
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [hoveredDropZone, setHoveredDropZone] = useState<string | null>(null);
   
-  // 드롭존 맵 초기화
-  const [dropZoneMap, setDropZoneMap] = useState<Record<string, string>>(() => {
-    const initialMap: Record<string, string> = {};
-    Object.keys(boxesById).forEach((id, index) => {
-      initialMap[id] = `drop-${index}`;
-    });
-    return initialMap;
+  const [dropZoneMap, setDropZoneMap] = useState<Record<string, string>>({
+    "box-1": "drop-0",
+    "box-2": "drop-1",
+    "box-3": "drop-2",
   });
   
-  // 포인터 센서 설정 - 드래그 감지 민감도 조정
+  // 포인터 센서 설정 - 드래그 감지 민감도 조정 (시작 민감도 낮추기)
   const sensors = useSensors(
     useSensor(PointerSensor, { 
       activationConstraint: { 
-        distance: 3,
-        delay: 0,
+        distance: 3, // 더 낮은 거리로 설정
+        delay: 0,    // 딜레이 제거
       } 
     })
   );
@@ -158,6 +149,7 @@ export default function Page() {
     setHoveredDropZone(over ? String(over.id) : null);
   };
 
+  // 두 박스의 order 값을 직접 스왑하는 로직
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
@@ -223,10 +215,10 @@ export default function Page() {
     >
       <SortableContext items={sortedIds} strategy={rectSortingStrategy}>
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-          <h1 className="text-2xl font-bold mb-8 text-gray-700">3x3 드래그 앤 드롭 그리드</h1>
+          <h1 className="text-2xl font-bold mb-8 text-gray-700">드래그 앤 드롭 데모</h1>
           
           <motion.div 
-            className="grid grid-cols-3 gap-4 p-8 rounded-xl bg-white shadow-sm"
+            className="flex gap-8 p-10 rounded-xl bg-white shadow-sm"
             layout
             transition={{
               type: "spring",
@@ -239,9 +231,9 @@ export default function Page() {
                 <motion.div
                   key={`${box.id}-container`}
                   layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, y: 10, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.9 }}
                   transition={{
                     type: "spring",
                     stiffness: 500,
