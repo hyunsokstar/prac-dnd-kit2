@@ -16,13 +16,12 @@ import {
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { motion, AnimatePresence } from "framer-motion";
 
-// 박스 데이터 타입 정의
-interface BoxItem {
+// 카드 데이터 타입 정의
+interface Card {
   id: string;
   content: string;
-  order: number;
-  isFlipped: boolean; // 카드가 뒤집혔는지 여부
-  isBomb: boolean;    // 폭탄인지 여부
+  isFlipped: boolean;
+  isBomb: boolean;
 }
 
 /**
@@ -61,19 +60,21 @@ const CardBack = ({ isBomb }: { isBomb: boolean }) => (
 );
 
 /**
- * 드래그 가능한 카드 컴포넌트 (클릭시 뒤집기 기능 포함)
+ * 드래그 가능한 카드 컴포넌트
  */
-const DraggableBox = ({
-  item,
+const DraggableCard = ({
+  card,
   isDragging,
   onFlip,
+  index
 }: {
-  item: BoxItem;
+  card: Card;
   isDragging: boolean;
   onFlip: (id: string) => void;
+  index: number;
 }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: item.id,
+    id: card.id,
   });
 
   const style = transform
@@ -82,10 +83,9 @@ const DraggableBox = ({
       }
     : undefined;
 
-  // 카드 클릭 핸들러
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onFlip(item.id);
+    onFlip(card.id);
   };
 
   return (
@@ -101,20 +101,20 @@ const DraggableBox = ({
         onClick={handleClick}
         style={{ 
           transition: 'transform 0.6s',
-          transform: item.isFlipped ? 'rotateY(180deg)' : ''
+          transform: card.isFlipped ? 'rotateY(180deg)' : ''
         }}
       >
-        <CardFront content={item.content} />
-        <CardBack isBomb={item.isBomb} />
+        <CardFront content={`${card.content}`} />
+        <CardBack isBomb={card.isBomb} />
       </div>
     </div>
   );
 };
 
 /**
- * 드롭 가능한 영역
+ * 드롭 영역 컴포넌트
  */
-const DropZone = ({
+const DropArea = ({
   id,
   isActive,
   isOver,
@@ -125,224 +125,154 @@ const DropZone = ({
   isOver: boolean;
   children: React.ReactNode;
 }) => {
-  const { setNodeRef, isOver: dropIsOver } = useDroppable({ id });
+  const { setNodeRef, isOver: dropIsOver } = useDroppable({
+    id,
+  });
 
   return (
     <div
       ref={setNodeRef}
-      className={`w-28 h-28 flex items-center justify-center transition-all duration-200
-        ${isOver || dropIsOver ? "scale-105" : ""}`}
+      className={`w-28 h-28 flex items-center justify-center transition-all duration-200 rounded-lg
+        ${isOver || dropIsOver ? "bg-gray-100 scale-105" : ""}`}
     >
       {children}
     </div>
   );
 };
 
-/**
- * 메인 컴포넌트
- */
 export default function Page() {
-  // 클라이언트 마운트 여부 체크 (hydration 에러 방지)
   const [mounted, setMounted] = useState(false);
-  
-  // 모든 훅은 항상 호출합니다.
-  const [boxesById, setBoxesById] = useState<Record<string, BoxItem>>({});
+  const [cards, setCards] = useState<Card[]>([]);
   const [bombFound, setBombFound] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [flippedCount, setFlippedCount] = useState(0);
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   
-  // 게임 초기화 (폭탄 위치 랜덤 설정)
+  // 게임 초기화
   useEffect(() => {
-    const initializeGame = () => {
-      // 폭탄을 랜덤 위치에 설정
-      const randomBombPosition = Math.floor(Math.random() * 9);
-      
-      const initialBoxes: Record<string, BoxItem> = {};
-      for (let i = 1; i <= 9; i++) {
-        initialBoxes[`box-${i}`] = {
-          id: `box-${i}`,
-          content: `${i}`,
-          order: i - 1,
-          isFlipped: false,
-          isBomb: i - 1 === randomBombPosition
-        };
-      }
-      
-      setBoxesById(initialBoxes);
-      setBombFound(false);
-      setGameOver(false);
-      setFlippedCount(0);
-    };
-    
-    initializeGame();
+    initGame();
     setMounted(true);
   }, []);
   
-  // 게임 리셋 함수
-  const resetGame = () => {
-    // 폭탄을 랜덤 위치에 설정
-    const randomBombPosition = Math.floor(Math.random() * 9);
+  const initGame = () => {
+    const randomBombIndex = Math.floor(Math.random() * 9);
     
-    const initialBoxes: Record<string, BoxItem> = {};
-    for (let i = 1; i <= 9; i++) {
-      initialBoxes[`box-${i}`] = {
-        id: `box-${i}`,
-        content: `${i}`,
-        order: i - 1,
-        isFlipped: false,
-        isBomb: i - 1 === randomBombPosition
-      };
-    }
+    const newCards = Array(9).fill(null).map((_, index) => ({
+      id: `card-${index + 1}`,
+      content: `${index + 1}`,
+      isFlipped: false,
+      isBomb: index === randomBombIndex
+    }));
     
-    setBoxesById(initialBoxes);
+    setCards(newCards);
     setBombFound(false);
     setGameOver(false);
     setFlippedCount(0);
   };
   
-  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
-  const [hoveredDropZone, setHoveredDropZone] = useState<string | null>(null);
+  // 카드 뒤집기 핸들러
+  const handleFlip = useCallback((id: string) => {
+    if (gameOver) return;
+    
+    setCards(prevCards => {
+      const newCards = [...prevCards];
+      const cardIndex = newCards.findIndex(c => c.id === id);
+      
+      if (cardIndex === -1 || newCards[cardIndex].isFlipped) return prevCards;
+      
+      newCards[cardIndex] = {
+        ...newCards[cardIndex],
+        isFlipped: true
+      };
+      
+      // 폭탄 체크
+      if (newCards[cardIndex].isBomb) {
+        setBombFound(true);
+        setGameOver(true);
+      } else {
+        const newFlippedCount = flippedCount + 1;
+        setFlippedCount(newFlippedCount);
+        
+        if (newFlippedCount === 8) {
+          setGameOver(true);
+        }
+      }
+      
+      return newCards;
+    });
+  }, [gameOver, flippedCount]);
   
-  // 드롭존 맵 초기화
-  const [dropZoneMap, setDropZoneMap] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (Object.keys(boxesById).length > 0) {
-      const initialMap: Record<string, string> = {};
-      Object.keys(boxesById).forEach((id, index) => {
-        initialMap[id] = `drop-${boxesById[id].order}`;
-      });
-      setDropZoneMap(initialMap);
-    }
-  }, [boxesById]);
-  
-  // 포인터 센서 설정 - 드래그 감지 민감도 조정
+  // 드래그 관련 핸들러
   const sensors = useSensors(
-    useSensor(PointerSensor, { 
-      activationConstraint: { 
-        distance: 10, // 더 멀리 이동해야 드래그 시작 (클릭 이벤트와 구분)
-      } 
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 10,
+      },
     })
   );
   
-  // 카드 뒤집기 핸들러
-  const handleFlipCard = useCallback((id: string) => {
-    // 게임이 끝났거나 이미 뒤집힌 카드는 무시
-    if (gameOver || boxesById[id]?.isFlipped) return;
-    
-    // 카드 뒤집기
-    setBoxesById(prev => {
-      if (!prev[id]) return prev;
-      
-      return {
-        ...prev,
-        [id]: {
-          ...prev[id],
-          isFlipped: true
-        }
-      };
-    });
-    
-    // 뒤집은 카드 수 증가
-    setFlippedCount(count => count + 1);
-    
-    // 폭탄 체크
-    if (boxesById[id]?.isBomb) {
-      setBombFound(true);
-      setGameOver(true);
-    } else if (flippedCount + 1 === 8) {
-      // 모든 안전 카드를 뒤집었을 때 (폭탄 제외 8개)
-      setGameOver(true);
-    }
-  }, [boxesById, gameOver, flippedCount]);
-
-  const getSortedBoxes = useCallback(() => {
-    if (Object.keys(boxesById).length === 0) return [];
-    return Object.values(boxesById).sort((a, b) => a.order - b.order);
-  }, [boxesById]);
-
-  const getSortedBoxIds = useCallback(() => {
-    return getSortedBoxes().map(box => box.id);
-  }, [getSortedBoxes]);
-
   const handleDragStart = (event: DragStartEvent) => {
-    // 뒤집힌 카드는 드래그 불가
-    const boxId = event.active.id as string;
-    if (boxesById[boxId]?.isFlipped || gameOver) {
+    const { active } = event;
+    const cardId = active.id as string;
+    const cardIndex = cards.findIndex(c => c.id === cardId);
+    
+    if (cardIndex === -1 || cards[cardIndex].isFlipped || gameOver) {
       return;
     }
     
-    setActiveId(event.active.id);
+    setActiveId(cardId);
   };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { over } = event;
-    setHoveredDropZone(over ? String(over.id) : null);
-  };
-
+  
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    
     setActiveId(null);
-    setHoveredDropZone(null);
     
     if (!over) return;
-
-    const activeBoxId = active.id as string;
-    let targetBoxId: string | null = null;
-
-    if (typeof over.id === "string" && over.id.startsWith("drop-")) {
-      // 드롭존에 드롭한 경우 해당 드롭존에 있는 박스 ID 찾기
-      targetBoxId =
-        Object.keys(dropZoneMap).find((key) => dropZoneMap[key] === over.id) ||
-        null;
-    } else {
-      // 직접 박스에 드롭한 경우
-      targetBoxId = over.id as string;
-    }
     
-    if (!targetBoxId || activeBoxId === targetBoxId) return;
+    const activeId = active.id as string;
+    const overId = over.id as string;
     
-    // 뒤집힌 카드가 있으면 위치 변경 불가
-    if (boxesById[activeBoxId]?.isFlipped || boxesById[targetBoxId]?.isFlipped) {
-      return;
-    }
-
-    // 박스 순서 업데이트
-    setBoxesById(prev => {
-      if (!prev[activeBoxId] || !prev[targetBoxId]) return prev;
+    if (activeId === overId) return;
+    
+    setCards(prevCards => {
+      const newCards = [...prevCards];
       
-      const updatedBoxes = { ...prev };
-      const tempOrder = updatedBoxes[activeBoxId].order;
-      updatedBoxes[activeBoxId].order = updatedBoxes[targetBoxId].order;
-      updatedBoxes[targetBoxId].order = tempOrder;
-      return updatedBoxes;
+      const activeIndex = newCards.findIndex(c => c.id === activeId);
+      const overIndex = newCards.findIndex(c => c.id === overId);
+      
+      if (
+        activeIndex === -1 || 
+        overIndex === -1 || 
+        newCards[activeIndex].isFlipped || 
+        newCards[overIndex].isFlipped
+      ) {
+        return prevCards;
+      }
+      
+      // 카드 위치 교환
+      const temp = newCards[activeIndex];
+      newCards[activeIndex] = newCards[overIndex];
+      newCards[overIndex] = temp;
+      
+      return newCards;
     });
-
-    // 드롭존 매핑 업데이트 - handleDragEnd 이후에 useEffect에서 자동으로 업데이트됨
   };
-
-  const handleDragCancel = () => {
-    setActiveId(null);
-    setHoveredDropZone(null);
-  };
-
-  const sortedBoxes = getSortedBoxes();
-  const sortedIds = getSortedBoxIds();
-
-  // 모든 훅 호출 후, mounted 여부에 따라 렌더링 분기
-  if (!mounted || sortedBoxes.length === 0) {
+  
+  // 카드 ID 배열
+  const cardIds = cards.map(card => card.id);
+  
+  if (!mounted) {
     return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
   }
-
+  
   return (
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
     >
-      <SortableContext items={sortedIds} strategy={rectSortingStrategy}>
+      <SortableContext items={cardIds} strategy={rectSortingStrategy}>
         <div className="flex flex-col items-center justify-center min-h-screen">
           <h1 className="text-2xl font-bold mb-4 text-gray-700">폭탄 찾기 게임</h1>
           <p className="mb-8 text-gray-600">카드를 클릭하여 뒤집거나 드래그하여 순서를 변경해보세요</p>
@@ -353,7 +283,7 @@ export default function Page() {
                 {bombFound ? '💥 폭탄을 찾았습니다!' : '🎉 성공! 모든 안전 카드를 찾았습니다!'}
               </div>
               <button 
-                onClick={resetGame}
+                onClick={initGame}
                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
               >
                 게임 재시작
@@ -361,25 +291,41 @@ export default function Page() {
             </div>
           )}
           
-          <div className="relative">
-            <div className="grid grid-cols-3 gap-4 p-8">
-              {sortedBoxes.map((box, index) => (
-                <div key={`${box.id}-container`}>
-                  <DropZone 
-                    id={`drop-${box.order}`} 
-                    isActive={activeId === box.id}
-                    isOver={hoveredDropZone === `drop-${box.order}`}
+          <motion.div 
+            className="grid grid-cols-3 gap-4 p-8"
+            layout
+          >
+            <AnimatePresence mode="popLayout">
+              {cards.map((card, index) => (
+                <motion.div
+                  key={card.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 25,
+                    mass: 1
+                  }}
+                >
+                  <DropArea
+                    id={card.id}
+                    isActive={activeId === card.id}
+                    isOver={false}
                   >
-                    <DraggableBox 
-                      item={box} 
-                      isDragging={activeId === box.id}
-                      onFlip={handleFlipCard}
+                    <DraggableCard
+                      card={card}
+                      isDragging={activeId === card.id}
+                      onFlip={handleFlip}
+                      index={index}
                     />
-                  </DropZone>
-                </div>
+                  </DropArea>
+                </motion.div>
               ))}
-            </div>
-          </div>
+            </AnimatePresence>
+          </motion.div>
           
           <p className="mt-6 text-gray-600 text-sm flex items-center gap-2">
             <span className="px-2 py-1 bg-blue-500 text-white text-xs rounded-md">드래그</span> 
